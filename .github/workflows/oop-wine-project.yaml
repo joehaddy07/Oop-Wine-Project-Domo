@@ -146,10 +146,10 @@ jobs:
           python -m pip install --upgrade pip wheel
           pip install "setuptools<81" "Cython>=3.0.0" versioneer
           if [ -f requirements-dev.txt ]; then
-            pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements-dev.txt
+            pip install --prefer-binary --extra-index-url https://download.pytorch.org/whl/cpu -r requirements-dev.txt
           fi
           if [ -f requirements.txt ]; then
-            pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
+            pip install --prefer-binary --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
           fi
 
 
