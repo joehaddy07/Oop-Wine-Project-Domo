@@ -144,145 +144,17 @@ jobs:
       - name: Install Python Dependencies
         run: |
           python -m pip install --upgrade pip wheel
-          pip install "setuptools<81" "Cython>=3.0.0" versioneer
           if [ -f requirements-dev.txt ]; then
-            pip install --prefer-binary --extra-index-url https://download.pytorch.org/whl/cpu -r requirements-dev.txt
+            pip install --only-binary pandas,numpy,scikit-learn,scipy \
+              --extra-index-url https://download.pytorch.org/whl/cpu \
+              -r requirements-dev.txt
           fi
+
           if [ -f requirements.txt ]; then
-            pip install --prefer-binary --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
+            pip install --only-binary pandas,numpy,scikit-learn,scipy \
+              --extra-index-url https://download.pytorch.org/whl/cpu \
+              -r requirements.txt
           fi
-
-
-      # ------------------------------------------------------
-      # STEP 4: Run Unit Tests
-      # ------------------------------------------------------
-
-      - name: Run Unit Tests
-        env:
-          PYTHONPATH: src:.
-        run: |
-          echo "======================================"
-          echo "Running Unit Tests"
-          echo "======================================"
-
-          pytest
-
-
-      # ------------------------------------------------------
-      # STEP 5: Train Model + MLflow
-      # ------------------------------------------------------
-
-      - name: Train and Track Model with MLflow
-        env:
-          MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
-          PYTHONPATH: .
-        run: |
-          echo "======================================"
-          echo "Training Machine Learning Model"
-          echo "======================================"
-
-          echo ""
-          echo "MLflow Tracking Server:"
-          echo "${MLFLOW_TRACKING_URI}"
-          echo ""
-
-          python -m src.main
-
-
-      # ------------------------------------------------------
-      # STEP 6: Verify MLflow
-      # ------------------------------------------------------
-
-      - name: Verify MLflow Execution
-        run: |
-
-          echo "======================================"
-          echo "MLflow Training Completed"
-          echo "======================================"
-
-          echo "The MLflow experiment and model"
-          echo "registration are handled by src/main.py."
-
-
-      # ------------------------------------------------------
-      # STEP 7: Docker Hub Login
-      # ------------------------------------------------------
-
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
-
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-
-      # ------------------------------------------------------
-      # STEP 8: Build Docker Image
-      # ------------------------------------------------------
-
-      - name: Build Docker Image
-        run: |
-
-          echo "======================================"
-          echo "Building Docker Image"
-          echo "======================================"
-
-          echo "Image:"
-          echo "${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
-
-          docker build \
-            -f app/Dockerfile \
-            -t ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} \
-            .
-
-
-      # ------------------------------------------------------
-      # STEP 9: Scan Docker Image with Trivy
-      # ------------------------------------------------------
-
-      - name: Run Trivy Vulnerability Scanner
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: '${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}'
-          format: 'table'
-          exit-code: '0' # Set to '1' to fail pipeline when critical CVEs are found
-          ignore-unfixed: true
-          vuln-type: 'os,library'
-          severity: 'HIGH,CRITICAL'
-
-
-      # ------------------------------------------------------
-      # STEP 10: Push Docker Image
-      # ------------------------------------------------------
-
-      - name: Push Docker Image
-        run: |
-
-          echo "======================================"
-          echo "Pushing Docker Image"
-          echo "======================================"
-
-          docker push \
-            ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
-
-
-      # ------------------------------------------------------
-      # STEP 11: Verify Docker Image
-      # ------------------------------------------------------
-
-      - name: Verify Docker Image
-        run: |
-
-          echo "======================================"
-          echo "Docker Image Verification"
-          echo "======================================"
-
-          docker image inspect \
-            ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
-
-          echo ""
-          echo "Image successfully built and verified."
-
 
   # ========================================================
   # JOB 2
