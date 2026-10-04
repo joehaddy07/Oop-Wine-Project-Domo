@@ -87,7 +87,7 @@ env:
   IMAGE_TAG: ${{ github.sha }}
 
   # Helm release
-  HELM_RELEASE: wine-app
+  HELM_RELEASE: Oop-wine-app
 
   # Helm chart
   HELM_CHART: ./helm/wine
