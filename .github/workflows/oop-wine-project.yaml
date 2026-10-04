@@ -268,23 +268,27 @@ jobs:
 
 
       # ------------------------------------------------------
-      # STEP 18: Load Exact Git SHA Image into Kind
+      # STEP 18: Load Image into Kind
       # ------------------------------------------------------
 
-      - name: Load Image into joe-cluster
+      - name: Load Image into Kind
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
         run: |
+          # Construct the complete Docker Hub image name.
+          IMAGE="${DOCKERHUB_USERNAME}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
 
           echo "======================================"
           echo "Loading Exact Image into Kind"
           echo "======================================"
+          echo "Image: $IMAGE"
 
-          IMAGE="${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
+          # Confirm that the exact image exists locally.
+          docker image inspect "$IMAGE"
 
-          echo "Image:"
-          echo "$IMAGE"
-
+          # Load the exact Git SHA image into the Kind cluster.
           kind load docker-image \
-            --name ${{ env.KIND_CLUSTER }} \
+            --name "${{ env.KIND_CLUSTER }}" \
             "$IMAGE"
 
 
