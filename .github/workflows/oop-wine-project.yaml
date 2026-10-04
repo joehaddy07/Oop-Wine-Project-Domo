@@ -278,7 +278,14 @@ jobs:
           echo "Loading Exact Image into Kind"
           echo "======================================"
 
-          IMAGE="${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
+          DUSER="${{ secrets.DOCKERHUB_USERNAME }}"
+
+          # If DOCKERHUB_USERNAME is set, use username/image:tag, otherwise image:tag
+          if [ -n "$DUSER" ]; then
+            IMAGE="${DUSER}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
+          else
+            IMAGE="${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
+          fi
 
           echo "Image:"
           echo "$IMAGE"
@@ -286,7 +293,6 @@ jobs:
           kind load docker-image \
             --name ${{ env.KIND_CLUSTER }} \
             "$IMAGE"
-
 
       # ------------------------------------------------------
       # STEP 19: Verify Image Inside Kind
@@ -349,10 +355,16 @@ jobs:
           echo "Deploying Application"
           echo "======================================"
 
-          IMAGE="${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}"
+          DUSER="${{ secrets.DOCKERHUB_USERNAME }}"
+
+          if [ -n "$DUSER" ]; then
+            REPO_PATH="${DUSER}/${{ env.IMAGE_NAME }}"
+          else
+            REPO_PATH="${{ env.IMAGE_NAME }}"
+          fi
 
           echo "Repository:"
-          echo "$IMAGE"
+          echo "$REPO_PATH"
 
           echo "Tag:"
           echo "${{ env.IMAGE_TAG }}"
@@ -360,13 +372,10 @@ jobs:
           helm upgrade --install \
             ${{ env.HELM_RELEASE }} \
             ${{ env.HELM_CHART }} \
-            --set image.repository="$IMAGE" \
+            --set image.repository="$REPO_PATH" \
             --set image.tag="${{ env.IMAGE_TAG }}" \
             --set image.pullPolicy=IfNotPresent \
-            --set replicaCount=3 \
             --wait=false
-
-
       # ------------------------------------------------------
       # STEP 23: Verify Deployed Image
       # ------------------------------------------------------
