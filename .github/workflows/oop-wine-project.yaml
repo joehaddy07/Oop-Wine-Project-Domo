@@ -113,604 +113,684 @@ jobs:
   # Trivy Vulnerability Scan
   # Docker Push
   # ========================================================
+# ==========================================================
+# JOB 1: BUILD / TEST / TRAIN / DOCKER
+# ==========================================================
 
-  build-train:
+ build-train:
 
-    runs-on: self-hosted
+  runs-on: self-hosted
 
-    steps:
+  steps:
 
-      # ------------------------------------------------------
-      # STEP 1: Checkout
-      # ------------------------------------------------------
+    # ------------------------------------------------------
+    # STEP 1: Checkout
+    # ------------------------------------------------------
 
-      - name: Checkout Source Code
-        uses: actions/checkout@v4
+    - name: Checkout Source Code
+      uses: actions/checkout@v4
 
 
-      # ------------------------------------------------------
-      # STEP 2: Setup Python
-      # ------------------------------------------------------
+    # ------------------------------------------------------
+    # STEP 2: Setup Python
+    # ------------------------------------------------------
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
 
 
-      # ------------------------------------------------------
-      # STEP 3: Install Dependencies
-      # ------------------------------------------------------
-      - name: Install Python Dependencies
-        run: |
-          python -m pip install --upgrade pip wheel
-          if [ -f requirements-dev.txt ]; then
-            pip install --only-binary pandas,numpy,scikit-learn,scipy \
-              --extra-index-url https://download.pytorch.org/whl/cpu \
-              -r requirements-dev.txt
-          fi
+    # ------------------------------------------------------
+    # STEP 3: Install Dependencies
+    # ------------------------------------------------------
 
-          if [ -f requirements.txt ]; then
-            pip install --only-binary pandas,numpy,scikit-learn,scipy \
-              --extra-index-url https://download.pytorch.org/whl/cpu \
-              -r requirements.txt
-          fi
+    - name: Install Python Dependencies
+      run: |
 
-  # ========================================================
-  # JOB 2
-  # Kubernetes + Helm Deployment
-  # ========================================================
+        python -m pip install --upgrade pip wheel
 
-  deploy:
+        if [ -f requirements-dev.txt ]; then
+          pip install --only-binary pandas,numpy,scikit-learn,scipy \
+            --extra-index-url https://download.pytorch.org/whl/cpu \
+            -r requirements-dev.txt
+        fi
 
-    needs: build-train
+        if [ -f requirements.txt ]; then
+          pip install --only-binary pandas,numpy,scikit-learn,scipy \
+            --extra-index-url https://download.pytorch.org/whl/cpu \
+            -r requirements.txt
+        fi
 
-    runs-on: self-hosted
 
-    steps:
+    # ------------------------------------------------------
+    # STEP 4: Run Tests
+    # ------------------------------------------------------
 
+    - name: Run Tests
+      run: |
+        python -m pytest
 
-      # ------------------------------------------------------
-      # STEP 12: Checkout Repository
-      # ------------------------------------------------------
 
-      - name: Checkout Repository
-        uses: actions/checkout@v4
+    # ------------------------------------------------------
+    # STEP 5: Login to Docker Hub
+    # ------------------------------------------------------
 
+    - name: Login to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # ------------------------------------------------------
-      # STEP 13: Verify Docker
-      # ------------------------------------------------------
 
-      - name: Verify Docker
-        run: |
+    # ------------------------------------------------------
+    # STEP 6: Build Docker Image
+    # ------------------------------------------------------
 
-          echo "======================================"
-          echo "Docker Version"
-          echo "======================================"
+    - name: Build Docker Image
+      env:
+        DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      run: |
 
-          docker version
+        IMAGE_NAME="${{ env.IMAGE_NAME }}"
+        IMAGE_TAG="${{ env.IMAGE_TAG }}"
 
+        # Local image using Git SHA.
+        LOCAL_IMAGE="${IMAGE_NAME}:${IMAGE_TAG}"
 
-      # ------------------------------------------------------
-      # STEP 14: Verify Kind
-      # ------------------------------------------------------
+        # Docker Hub image using the SAME Git SHA.
+        REMOTE_IMAGE="${DOCKERHUB_USERNAME}/${IMAGE_NAME}:${IMAGE_TAG}"
 
-      - name: Verify Kind
-        run: |
+        echo "======================================"
+        echo "Building Docker Image"
+        echo "======================================"
 
-          echo "======================================"
-          echo "Kind Version"
-          echo "======================================"
+        echo "Local Image:"
+        echo "$LOCAL_IMAGE"
 
-          kind version
+        echo "Remote Image:"
+        echo "$REMOTE_IMAGE"
 
-          echo ""
-          echo "Available Kind Clusters:"
+        # Build the image locally.
+        docker build \
+          -t "$LOCAL_IMAGE" \
+          .
 
-          kind get clusters
+        # Tag the exact same image for Docker Hub.
+        docker tag \
+          "$LOCAL_IMAGE" \
+          "$REMOTE_IMAGE"
 
+        # Verify the local image exists.
+        docker image inspect "$LOCAL_IMAGE"
 
-      # ------------------------------------------------------
-      # STEP 15: Verify joe-cluster
-      # ------------------------------------------------------
+        # Verify the Docker Hub tagged image exists locally.
+        docker image inspect "$REMOTE_IMAGE"
 
-      - name: Verify joe-cluster
-        run: |
 
-          echo "======================================"
-          echo "Checking Kind Cluster"
-          echo "======================================"
+    # ------------------------------------------------------
+    # STEP 7: Push Git SHA Image to Docker Hub
+    # ------------------------------------------------------
 
-          kind get clusters | grep -x "${{ env.KIND_CLUSTER }}"
+    - name: Push Docker Image
+      env:
+        DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      run: |
 
-          echo "joe-cluster exists."
+        IMAGE="${DOCKERHUB_USERNAME}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
 
+        echo "======================================"
+        echo "Pushing Docker Image"
+        echo "======================================"
 
-      # ------------------------------------------------------
-      # STEP 16: Configure kubectl
-      # ------------------------------------------------------
+        echo "Image:"
+        echo "$IMAGE"
 
-      - name: Configure kubectl for joe-cluster
-        run: |
+        docker push "$IMAGE"
 
-          echo "======================================"
-          echo "Configuring kubectl"
-          echo "======================================"
 
-          kind export kubeconfig \
-            --name ${{ env.KIND_CLUSTER }}
+# ==========================================================
+# JOB 2: KUBERNETES + HELM DEPLOYMENT
+# ==========================================================
 
-          kubectl config use-context \
-            kind-${{ env.KIND_CLUSTER }}
+ deploy:
 
+  needs: build-train
 
-      # ------------------------------------------------------
-      # STEP 17: Verify Kubernetes
-      # ------------------------------------------------------
+  runs-on: self-hosted
 
-      - name: Verify Kubernetes Cluster
-        run: |
+  steps:
 
-          echo "======================================"
-          echo "Kubernetes Cluster"
-          echo "======================================"
+    # ------------------------------------------------------
+    # STEP 8: Checkout Repository
+    # ------------------------------------------------------
 
-          kubectl config current-context
+    - name: Checkout Repository
+      uses: actions/checkout@v4
 
-          echo ""
 
-          kubectl get nodes -o wide
+    # ------------------------------------------------------
+    # STEP 9: Verify Docker
+    # ------------------------------------------------------
 
-          echo ""
+    - name: Verify Docker
+      run: |
+        echo "======================================"
+        echo "Docker Version"
+        echo "======================================"
 
-          kubectl cluster-info
+        docker version
 
 
-      # ------------------------------------------------------
-      # STEP 18: Load Exact Git SHA Image into Kind
-      # ------------------------------------------------------
+    # ------------------------------------------------------
+    # STEP 10: Login to Docker Hub
+    # ------------------------------------------------------
 
-      - name: Load Image into joe-cluster
-        run: |
+    - name: Login to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-          echo "======================================"
-          echo "Loading Exact Image into Kind"
-          echo "======================================"
 
-          IMAGE="${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
+    # ------------------------------------------------------
+    # STEP 11: Verify Kind
+    # ------------------------------------------------------
 
-          echo "Image:"
-          echo "$IMAGE"
+    - name: Verify Kind
+      run: |
 
-          kind load docker-image \
-            --name ${{ env.KIND_CLUSTER }} \
-            "$IMAGE"
+        echo "======================================"
+        echo "Kind Version"
+        echo "======================================"
 
+        kind version
 
-      # ------------------------------------------------------
-      # STEP 19: Verify Image Inside Kind
-      # ------------------------------------------------------
+        echo ""
+        echo "Available Kind Clusters:"
 
-      - name: Verify Image in Kind
-        run: |
+        kind get clusters
 
-          echo "======================================"
-          echo "Verifying Image Inside Kind"
-          echo "======================================"
 
-          IMAGE="${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
+    # ------------------------------------------------------
+    # STEP 12: Verify joe-cluster
+    # ------------------------------------------------------
 
-          docker exec \
-            ${{ env.KIND_CLUSTER }}-control-plane \
-            crictl images | grep "${{ env.IMAGE_NAME }}" || true
+    - name: Verify joe-cluster
+      run: |
 
-          echo ""
-          echo "Expected image:"
-          echo "$IMAGE"
+        echo "======================================"
+        echo "Checking Kind Cluster"
+        echo "======================================"
 
+        kind get clusters | grep -x "${{ env.KIND_CLUSTER }}"
 
-      # ------------------------------------------------------
-      # STEP 20: Verify Helm
-      # ------------------------------------------------------
+        echo "joe-cluster exists."
 
-      - name: Verify Helm
-        run: |
 
-          echo "======================================"
-          echo "Helm Version"
-          echo "======================================"
+    # ------------------------------------------------------
+    # STEP 13: Configure kubectl
+    # ------------------------------------------------------
 
-          helm version
+    - name: Configure kubectl for joe-cluster
+      run: |
 
+        echo "======================================"
+        echo "Configuring kubectl"
+        echo "======================================"
 
-      # ------------------------------------------------------
-      # STEP 21: Helm Lint
-      # ------------------------------------------------------
+        kind export kubeconfig \
+          --name "${{ env.KIND_CLUSTER }}"
 
-      - name: Helm Lint
-        run: |
+        kubectl config use-context \
+          "kind-${{ env.KIND_CLUSTER }}"
 
-          echo "======================================"
-          echo "Helm Lint"
-          echo "======================================"
 
-          helm lint ${{ env.HELM_CHART }}
+    # ------------------------------------------------------
+    # STEP 14: Verify Kubernetes
+    # ------------------------------------------------------
 
+    - name: Verify Kubernetes Cluster
+      run: |
 
-      # ------------------------------------------------------
-      # STEP 22: Deploy with Helm
-      # ------------------------------------------------------
+        echo "======================================"
+        echo "Kubernetes Cluster"
+        echo "======================================"
 
-      - name: Deploy Application with Helm
-        run: |
+        kubectl config current-context
 
-          echo "======================================"
-          echo "Deploying Application"
-          echo "======================================"
+        echo ""
 
-          IMAGE="${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}"
+        kubectl get nodes -o wide
 
-          echo "Repository:"
-          echo "$IMAGE"
+        echo ""
 
-          echo "Tag:"
-          echo "${{ env.IMAGE_TAG }}"
+        kubectl cluster-info
 
-          helm upgrade --install \
-            ${{ env.HELM_RELEASE }} \
-            ${{ env.HELM_CHART }} \
-            --set image.repository="$IMAGE" \
-            --set image.tag="${{ env.IMAGE_TAG }}" \
-            --set image.pullPolicy=IfNotPresent \
-            --set replicaCount=3 \
-            --wait=false
 
+    # ------------------------------------------------------
+    # STEP 15: Pull Exact Git SHA Image
+    # ------------------------------------------------------
 
-      # ------------------------------------------------------
-      # STEP 23: Verify Deployed Image
-      # ------------------------------------------------------
+    - name: Pull Exact Git SHA Image
+      env:
+        DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      run: |
 
-      - name: Verify Deployed Image
-        run: |
+        IMAGE="${DOCKERHUB_USERNAME}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
 
-          echo "======================================"
-          echo "Verifying Kubernetes Image"
-          echo "======================================"
+        echo "======================================"
+        echo "Pulling Exact Git SHA Image"
+        echo "======================================"
 
-          DEPLOYED_IMAGE=$(kubectl get deployment wine-app \
-            -o jsonpath='{.spec.template.spec.containers[0].image}')
+        echo "Image:"
+        echo "$IMAGE"
 
-          EXPECTED_IMAGE="${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
+        # Pull the exact image created by the build job.
+        docker pull "$IMAGE"
 
-          echo "Expected:"
-          echo "$EXPECTED_IMAGE"
+        # Confirm the image exists locally.
+        docker image inspect "$IMAGE"
 
-          echo ""
 
-          echo "Deployed:"
-          echo "$DEPLOYED_IMAGE"
+    # ------------------------------------------------------
+    # STEP 16: Load Exact Git SHA Image into Kind
+    # ------------------------------------------------------
 
-          echo ""
+    - name: Load Image into joe-cluster
+      env:
+        DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      run: |
 
-          if [ "$DEPLOYED_IMAGE" != "$EXPECTED_IMAGE" ]; then
-            echo "ERROR: Kubernetes is running the wrong image."
-            exit 1
-          fi
+        IMAGE="${DOCKERHUB_USERNAME}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
 
-          echo "Correct image is deployed."
+        echo "======================================"
+        echo "Loading Exact Image into Kind"
+        echo "======================================"
 
+        echo "Image:"
+        echo "$IMAGE"
 
-      # ------------------------------------------------------
-      # STEP 24: Show Rollout Status
-      # ------------------------------------------------------
+        # Confirm image exists before loading into Kind.
+        docker image inspect "$IMAGE"
 
-      - name: Show Rollout Status
-        run: |
+        # Load the exact Git SHA image into Kind.
+        kind load docker-image \
+          "$IMAGE" \
+          --name "${{ env.KIND_CLUSTER }}"
 
-          echo "======================================"
-          echo "Current Rollout Status"
-          echo "======================================"
 
-          kubectl rollout status \
-            deployment/wine-app \
-            --timeout=10s || true
+    # ------------------------------------------------------
+    # STEP 17: Verify Image Inside Kind
+    # ------------------------------------------------------
 
+    - name: Verify Image in Kind
+      env:
+        DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      run: |
 
-      # ------------------------------------------------------
-      # STEP 25: Wait for Deployment
-      # ------------------------------------------------------
+        IMAGE="${DOCKERHUB_USERNAME}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
 
-      - name: Wait for Deployment
-        run: |
+        echo "======================================"
+        echo "Verifying Image Inside Kind"
+        echo "======================================"
 
-          echo "======================================"
-          echo "Waiting for Kubernetes Rollout"
-          echo "======================================"
+        echo "Expected image:"
+        echo "$IMAGE"
 
-          kubectl rollout status \
-            deployment/wine-app \
-            --timeout=300s
+        docker exec \
+          "${{ env.KIND_CLUSTER }}-control-plane" \
+          crictl images | grep "${{ env.IMAGE_NAME }}"
 
+        echo ""
+        echo "Kind image verification complete."
 
-      # ------------------------------------------------------
-      # STEP 26: Verify Pods
-      # ------------------------------------------------------
 
-      - name: Verify Pods
-        run: |
+    # ------------------------------------------------------
+    # STEP 18: Verify Helm
+    # ------------------------------------------------------
 
-          echo "======================================"
-          echo "Pods Status"
-          echo "======================================"
+    - name: Verify Helm
+      run: |
 
-          kubectl get pods \
-            -o wide
+        echo "======================================"
+        echo "Helm Version"
+        echo "======================================"
 
+        helm version
 
-      # ------------------------------------------------------
-      # STEP 27: Verify Services
-      # ------------------------------------------------------
 
-      - name: Verify Services
-        run: |
+    # ------------------------------------------------------
+    # STEP 19: Helm Lint
+    # ------------------------------------------------------
 
-          echo "======================================"
-          echo "Services Status"
-          echo "======================================"
+    - name: Helm Lint
+      run: |
 
-          kubectl get svc
+        echo "======================================"
+        echo "Helm Lint"
+        echo "======================================"
 
+        helm lint "${{ env.HELM_CHART }}"
 
-      # ------------------------------------------------------
-      # STEP 28: Verify Deployments
-      # ------------------------------------------------------
 
-      - name: Verify Deployments
-        run: |
+    # ------------------------------------------------------
+    # STEP 20: Deploy with Helm
+    # ------------------------------------------------------
 
-          echo "======================================"
-          echo "Deployment Status"
-          echo "======================================"
+    - name: Deploy Application with Helm
+      env:
+        DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      run: |
 
-          kubectl get deployments
+        IMAGE="${DOCKERHUB_USERNAME}/${{ env.IMAGE_NAME }}"
 
+        echo "======================================"
+        echo "Deploying Application with Helm"
+        echo "======================================"
 
-      # ------------------------------------------------------
-      # STEP 29: Describe Deployment
-      # ------------------------------------------------------
+        echo "Repository:"
+        echo "$IMAGE"
 
-      - name: Describe Deployment
-        run: |
+        echo "Git SHA:"
+        echo "${{ env.IMAGE_TAG }}"
 
-          echo "======================================"
-          echo "Deployment Description"
-          echo "======================================"
+        echo "Full Image:"
+        echo "${IMAGE}:${{ env.IMAGE_TAG }}"
 
-          kubectl describe deployment wine-app
+        helm upgrade --install \
+          "${{ env.HELM_RELEASE }}" \
+          "${{ env.HELM_CHART }}" \
+          --set image.repository="$IMAGE" \
+          --set image.tag="${{ env.IMAGE_TAG }}" \
+          --set image.pullPolicy=IfNotPresent \
+          --set replicaCount=3 \
+          --wait
 
 
-      # ======================================================
-      # FAILURE DIAGNOSTICS
-      #
-      # These steps execute ONLY if something above fails.
-      # ======================================================
+    # ------------------------------------------------------
+    # STEP 21: Verify Deployed Image
+    # ------------------------------------------------------
 
+    - name: Verify Deployed Image
+      env:
+        DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      run: |
 
-      # ------------------------------------------------------
-      # STEP 30: Debug Pods
-      # ------------------------------------------------------
+        EXPECTED_IMAGE="${DOCKERHUB_USERNAME}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
 
-      - name: DEBUG - Kubernetes Pods
-        if: failure()
-        run: |
+        echo "======================================"
+        echo "Verifying Kubernetes Image"
+        echo "======================================"
 
-          echo "======================================"
-          echo "DEBUG: PODS"
-          echo "======================================"
+        DEPLOYED_IMAGE=$(kubectl get deployment wine-app \
+          -o jsonpath='{.spec.template.spec.containers[0].image}')
 
-          kubectl get pods \
-            -o wide
+        echo "Expected:"
+        echo "$EXPECTED_IMAGE"
 
+        echo ""
 
-      # ------------------------------------------------------
-      # STEP 31: Debug ReplicaSets
-      # ------------------------------------------------------
+        echo "Deployed:"
+        echo "$DEPLOYED_IMAGE"
 
-      - name: DEBUG - ReplicaSets
-        if: failure()
-        run: |
+        echo ""
 
-          echo "======================================"
-          echo "DEBUG: REPLICASETS"
-          echo "======================================"
+        if [ "$DEPLOYED_IMAGE" != "$EXPECTED_IMAGE" ]; then
+          echo "ERROR: Kubernetes is running the wrong image."
+          exit 1
+        fi
 
-          kubectl get replicasets \
-            -o wide
+        echo "Correct Git SHA image is deployed."
 
 
-      # ------------------------------------------------------
-      # STEP 32: Debug Deployment
-      # ------------------------------------------------------
+    # ------------------------------------------------------
+    # STEP 22: Wait for Deployment
+    # ------------------------------------------------------
 
-      - name: DEBUG - Deployment
-        if: failure()
-        run: |
+    - name: Wait for Deployment
+      run: |
 
-          echo "======================================"
-          echo "DEBUG: DEPLOYMENT"
-          echo "======================================"
+        echo "======================================"
+        echo "Waiting for Kubernetes Rollout"
+        echo "======================================"
 
-          kubectl describe deployment wine-app
+        kubectl rollout status \
+          deployment/wine-app \
+          --timeout=300s
 
 
-      # ------------------------------------------------------
-      # STEP 33: Debug Pods
-      # ------------------------------------------------------
+    # ------------------------------------------------------
+    # STEP 23: Verify Pods
+    # ------------------------------------------------------
 
-      - name: DEBUG - Describe Pods
-        if: failure()
-        run: |
+    - name: Verify Pods
+      run: |
 
-          echo "======================================"
-          echo "DEBUG: POD DESCRIPTIONS"
-          echo "======================================"
+        echo "======================================"
+        echo "Pods Status"
+        echo "======================================"
 
-          kubectl describe pods \
-            -l app=wine-app
+        kubectl get pods -o wide
 
 
-      # ------------------------------------------------------
-      # STEP 34: Debug Events
-      # ------------------------------------------------------
+    # ------------------------------------------------------
+    # STEP 24: Verify Services
+    # ------------------------------------------------------
 
-      - name: DEBUG - Kubernetes Events
-        if: failure()
-        run: |
+    - name: Verify Services
+      run: |
 
-          echo "======================================"
-          echo "DEBUG: KUBERNETES EVENTS"
-          echo "======================================"
+        echo "======================================"
+        echo "Services Status"
+        echo "======================================"
 
-          kubectl get events \
-            --sort-by=.lastTimestamp
+        kubectl get svc
 
 
-      # ------------------------------------------------------
-      # STEP 35: Debug Logs
-      # ------------------------------------------------------
+    # ------------------------------------------------------
+    # STEP 25: Verify Deployments
+    # ------------------------------------------------------
 
-      - name: DEBUG - Application Logs
-        if: failure()
-        run: |
+    - name: Verify Deployments
+      run: |
 
-          echo "======================================"
-          echo "DEBUG: APPLICATION LOGS"
-          echo "======================================"
+        echo "======================================"
+        echo "Deployment Status"
+        echo "======================================"
 
-          kubectl logs \
-            -l app=wine-app \
-            --all-containers=true \
-            --tail=200 \
-            --prefix=true || true
+        kubectl get deployments
 
 
-      # ------------------------------------------------------
-      # STEP 36: Previous Container Logs
-      # ------------------------------------------------------
+    # ------------------------------------------------------
+    # STEP 26: Describe Deployment
+    # ------------------------------------------------------
 
-      - name: DEBUG - Previous Container Logs
-        if: failure()
-        run: |
+    - name: Describe Deployment
+      run: |
 
-          echo "======================================"
-          echo "DEBUG: PREVIOUS CONTAINER LOGS"
-          echo "======================================"
+        echo "======================================"
+        echo "Deployment Description"
+        echo "======================================"
 
-          for POD in $(kubectl get pods \
-            -l app=wine-app \
-            -o jsonpath='{.items[*].metadata.name}'); do
+        kubectl describe deployment wine-app
 
-            echo ""
-            echo "======================================"
-            echo "Pod: $POD"
-            echo "======================================"
 
-            kubectl logs "$POD" \
-              --previous \
-              --all-containers=true \
-              --tail=200 || true
+    # ======================================================
+    # FAILURE DIAGNOSTICS
+    # ======================================================
 
-          done
+    # ------------------------------------------------------
+    # STEP 27: Kubernetes Diagnostics
+    # ------------------------------------------------------
 
+    - name: DEBUG - Kubernetes State
+      if: failure()
+      run: |
 
-      # ------------------------------------------------------
-      # STEP 37: Final Kubernetes State
-      # ------------------------------------------------------
+        echo "======================================"
+        echo "KUBERNETES FAILURE DIAGNOSTICS"
+        echo "======================================"
 
-      - name: DEBUG - Final Kubernetes State
-        if: failure()
-        run: |
+        echo ""
+        echo "=== All Resources ==="
+        kubectl get all -A || true
 
-          echo "======================================"
-          echo "FINAL KUBERNETES STATE"
-          echo "======================================"
+        echo ""
+        echo "=== Deployments ==="
+        kubectl get deployments -A || true
 
-          kubectl get all -l app=wine-app
+        echo ""
+        echo "=== Pods ==="
+        kubectl get pods -A -o wide || true
 
-          echo ""
+        echo ""
+        echo "=== Services ==="
+        kubectl get svc -A || true
 
-          kubectl get deployment wine-app \
-            -o yaml
+        echo ""
+        echo "=== ReplicaSets ==="
+        kubectl get replicasets -A || true
 
+        echo ""
+        echo "=== Helm Releases ==="
+        helm list -A || true
 
-      # ------------------------------------------------------
-      # STEP 38: Final Verification
-      # ------------------------------------------------------
+        echo ""
+        echo "=== Deployment wine-app ==="
+        kubectl get deployment wine-app -o yaml || true
 
-      - name: Final Kubernetes Verification
-        run: |
+        echo ""
+        echo "=== Kubernetes Events ==="
+        kubectl get events \
+          -A \
+          --sort-by=.lastTimestamp || true
 
-          echo "======================================"
-          echo "FINAL KUBERNETES VERIFICATION"
-          echo "======================================"
 
-          echo "Cluster:"
-          echo "${{ env.KIND_CLUSTER }}"
+    # ------------------------------------------------------
+    # STEP 28: Application Logs
+    # ------------------------------------------------------
 
-          echo ""
+    - name: DEBUG - Application Logs
+      if: failure()
+      run: |
 
-          echo "Context:"
-          kubectl config current-context
+        echo "======================================"
+        echo "APPLICATION LOGS"
+        echo "======================================"
 
-          echo ""
+        kubectl logs \
+          -l app=wine-app \
+          --all-containers=true \
+          --tail=200 \
+          --prefix=true || true
 
-          kubectl get nodes
 
-          echo ""
+    # ------------------------------------------------------
+    # STEP 29: Final Kubernetes State
+    # ------------------------------------------------------
 
-          kubectl get pods
+    - name: DEBUG - Final Kubernetes State
+      if: failure()
+      run: |
 
-          echo ""
+        echo "======================================"
+        echo "FINAL KUBERNETES STATE"
+        echo "======================================"
 
-          kubectl get svc
+        kubectl get all -A || true
 
-          echo ""
+        echo ""
 
-          kubectl get deployments
+        kubectl get deployments -A || true
 
+        echo ""
 
-      # ------------------------------------------------------
-      # STEP 39: Completion Summary
-      # ------------------------------------------------------
+        kubectl get pods -A -o wide || true
 
-      - name: Pipeline Completed Successfully
-        if: success()
-        run: |
+        echo ""
 
-          echo "======================================"
-          echo "MLOps Pipeline Completed Successfully"
-          echo "======================================"
+        kubectl get svc -A || true
 
-          echo "Docker Image:"
-          echo "${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
 
-          echo ""
+    # ------------------------------------------------------
+    # STEP 30: Final Verification
+    # ------------------------------------------------------
 
-          echo "Kind Cluster:"
-          echo "${{ env.KIND_CLUSTER }}"
+    - name: Final Kubernetes Verification
+      run: |
 
-          echo ""
+        echo "======================================"
+        echo "FINAL KUBERNETES VERIFICATION"
+        echo "======================================"
 
-          echo "Helm Release:"
-          echo "${{ env.HELM_RELEASE }}"
+        echo "Cluster:"
+        echo "${{ env.KIND_CLUSTER }}"
 
-          echo ""
+        echo ""
 
-          echo "Deployment:"
-          echo "wine-app"
+        echo "Context:"
+        kubectl config current-context
 
-          echo ""
+        echo ""
 
-          echo "Rollout:"
-          echo "SUCCESS"
+        echo "Nodes:"
+        kubectl get nodes
+
+        echo ""
+
+        echo "Pods:"
+        kubectl get pods
+
+        echo ""
+
+        echo "Services:"
+        kubectl get svc
+
+        echo ""
+
+        echo "Deployments:"
+        kubectl get deployments
+
+
+    # ------------------------------------------------------
+    # STEP 31: Completion Summary
+    # ------------------------------------------------------
+
+    - name: Pipeline Completed Successfully
+      if: success()
+      env:
+        DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      run: |
+
+        echo "======================================"
+        echo "MLOps Pipeline Completed Successfully"
+        echo "======================================"
+
+        echo "Docker Image:"
+        echo "${DOCKERHUB_USERNAME}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
+
+        echo ""
+
+        echo "Git SHA:"
+        echo "${{ env.IMAGE_TAG }}"
+
+        echo ""
+
+        echo "Kind Cluster:"
+        echo "${{ env.KIND_CLUSTER }}"
+
+        echo ""
+
+        echo "Helm Release:"
+        echo "${{ env.HELM_RELEASE }}"
+
+        echo ""
+
+        echo "Deployment:"
+        echo "wine-app"
+
+        echo ""
+
+        echo "Rollout:"
+        echo "SUCCESS"
