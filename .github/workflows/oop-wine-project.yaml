@@ -81,7 +81,7 @@ env:
   PYTHON_VERSION: "3.12"
 
   # Docker image name
-  IMAGE_NAME: wine-streamlit-app
+  IMAGE_NAME: oop-wine-streamlit-app
 
   # Git commit SHA = immutable image version
   IMAGE_TAG: ${{ github.sha }}
@@ -278,14 +278,7 @@ jobs:
           echo "Loading Exact Image into Kind"
           echo "======================================"
 
-          DUSER="${{ secrets.DOCKERHUB_USERNAME }}"
-
-          # If DOCKERHUB_USERNAME is set, use username/image:tag, otherwise image:tag
-          if [ -n "$DUSER" ]; then
-            IMAGE="${DUSER}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
-          else
-            IMAGE="${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
-          fi
+          IMAGE="${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
 
           echo "Image:"
           echo "$IMAGE"
@@ -293,6 +286,7 @@ jobs:
           kind load docker-image \
             --name ${{ env.KIND_CLUSTER }} \
             "$IMAGE"
+
 
       # ------------------------------------------------------
       # STEP 19: Verify Image Inside Kind
@@ -355,16 +349,10 @@ jobs:
           echo "Deploying Application"
           echo "======================================"
 
-          DUSER="${{ secrets.DOCKERHUB_USERNAME }}"
-
-          if [ -n "$DUSER" ]; then
-            REPO_PATH="${DUSER}/${{ env.IMAGE_NAME }}"
-          else
-            REPO_PATH="${{ env.IMAGE_NAME }}"
-          fi
+          IMAGE="${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}"
 
           echo "Repository:"
-          echo "$REPO_PATH"
+          echo "$IMAGE"
 
           echo "Tag:"
           echo "${{ env.IMAGE_TAG }}"
@@ -372,10 +360,13 @@ jobs:
           helm upgrade --install \
             ${{ env.HELM_RELEASE }} \
             ${{ env.HELM_CHART }} \
-            --set image.repository="$REPO_PATH" \
+            --set image.repository="$IMAGE" \
             --set image.tag="${{ env.IMAGE_TAG }}" \
             --set image.pullPolicy=IfNotPresent \
+            --set replicaCount=3 \
             --wait=false
+
+
       # ------------------------------------------------------
       # STEP 23: Verify Deployed Image
       # ------------------------------------------------------
