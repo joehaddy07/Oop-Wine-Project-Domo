@@ -1,15 +1,15 @@
 replicaCount: 3
 
 app:
-  name: wine-app
+  name: oop-wine-app
 
 image:
-  repository: joehaddy/wine-streamlit-app
+  repository: joehaddy/oop-wine-streamlit-app
   tag: "latest"
   pullPolicy: IfNotPresent
 
 container:
-  name: wine-container
+  name: oop-wine-container
   port: 8501
 
 service:
