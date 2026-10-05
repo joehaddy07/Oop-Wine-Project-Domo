@@ -177,21 +177,6 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # --------------------------------------------------------
-      # --------------------------------------------------------
-      - name: DEBUG - Check Secret Visibility
-        env:
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-        run: |
-          echo "======================================"
-          echo "DEBUG: Secret Check"
-          echo "======================================"
-          if [ -z "$DOCKERHUB_USERNAME" ]; then
-            echo "DOCKERHUB_USERNAME is EMPTY or NOT SET"
-          else
-            echo "DOCKERHUB_USERNAME is SET (length: ${#DOCKERHUB_USERNAME} characters)"
-          fi
-
       # ------------------------------------------------------
       # STEP 13: Verify Docker
       # ------------------------------------------------------
@@ -285,25 +270,32 @@ jobs:
       # STEP 18: Load Image into Kind
       # ------------------------------------------------------
 
-      - name: Load Image into Kind
-        env:
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      # ------------------------------------------------------
+      # STEP 18: Build & Load Image into Kind Cluster
+      # ------------------------------------------------------
+      - name: Build and Load Image into joe-cluster
         run: |
-          # Construct the complete Docker Hub image name.
-          IMAGE="${DOCKERHUB_USERNAME}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
-
           echo "======================================"
-          echo "Loading Exact Image into Kind"
+          echo "Building & Loading Exact Image into Kind"
           echo "======================================"
-          echo "Image: $IMAGE"
 
-          # Confirm that the exact image exists locally.
-          docker image inspect "$IMAGE"
+          # 1. Safely resolve username prefix
+          DUSER="${{ secrets.DOCKERHUB_USERNAME }}"
+          if [ -n "$DUSER" ]; then
+            FULL_IMAGE="${DUSER}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
+          else
+            FULL_IMAGE="${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
+          fi
 
-          # Load the exact Git SHA image into the Kind cluster.
-          kind load docker-image \
-            --name "${{ env.KIND_CLUSTER }}" \
-            "$IMAGE"
+          echo "Target Image: ${FULL_IMAGE}"
+
+          # 2. Build image locally in Job 2 context
+          echo "Building Docker image..."
+          docker build -t "${FULL_IMAGE}" .
+
+          # 3. Load image into Kind cluster
+          echo "Loading image into Kind cluster '${{ env.KIND_CLUSTER }}'..."
+          kind load docker-image "${FULL_IMAGE}" --name ${{ env.KIND_CLUSTER }}
 
 
       # ------------------------------------------------------
