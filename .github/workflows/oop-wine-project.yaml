@@ -378,7 +378,7 @@ jobs:
           echo "Verifying Kubernetes Image"
           echo "======================================"
 
-          DEPLOYED_IMAGE=$(kubectl get deployment wine-app \
+          DEPLOYED_IMAGE=$(kubectl get deployment oop-wine-app \
             -o jsonpath='{.spec.template.spec.containers[0].image}')
 
           EXPECTED_IMAGE="${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
@@ -413,7 +413,7 @@ jobs:
           echo "======================================"
 
           kubectl rollout status \
-            deployment/wine-app \
+            deployment/oop-wine-app \
             --timeout=10s || true
 
 
@@ -429,7 +429,7 @@ jobs:
           echo "======================================"
 
           kubectl rollout status \
-            deployment/wine-app \
+            deployment/oop-wine-app \
             --timeout=300s
 
 
@@ -487,7 +487,7 @@ jobs:
           echo "Deployment Description"
           echo "======================================"
 
-          kubectl describe deployment wine-app
+          kubectl describe deployment oop-wine-app
 
 
       # ======================================================
@@ -541,7 +541,7 @@ jobs:
           echo "DEBUG: DEPLOYMENT"
           echo "======================================"
 
-          kubectl describe deployment wine-app
+          kubectl describe deployment oop-wine-app
 
 
       # ------------------------------------------------------
@@ -557,7 +557,7 @@ jobs:
           echo "======================================"
 
           kubectl describe pods \
-            -l app=wine-app
+            -l app=oop-wine-app
 
 
       # ------------------------------------------------------
@@ -589,7 +589,7 @@ jobs:
           echo "======================================"
 
           kubectl logs \
-            -l app=wine-app \
+            -l app=oop-wine-app \
             --all-containers=true \
             --tail=200 \
             --prefix=true || true
@@ -608,7 +608,7 @@ jobs:
           echo "======================================"
 
           for POD in $(kubectl get pods \
-            -l app=wine-app \
+            -l app=oop-wine-app \
             -o jsonpath='{.items[*].metadata.name}'); do
 
             echo ""
@@ -636,11 +636,11 @@ jobs:
           echo "FINAL KUBERNETES STATE"
           echo "======================================"
 
-          kubectl get all -l app=wine-app
+          kubectl get all -l app=oop-wine-app
 
           echo ""
 
-          kubectl get deployment wine-app \
+          kubectl get deployment oop-wine-app \
             -o yaml
 
 
@@ -708,7 +708,7 @@ jobs:
           echo ""
 
           echo "Deployment:"
-          echo "wine-app"
+          echo "oop-wine-app"
 
           echo ""
 
