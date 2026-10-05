@@ -58,7 +58,7 @@
 #       └── FAILURE → Collect Kubernetes Diagnostics
 # ==========================================================
 
-name: Oop Wine CI/CD Pipeline
+name: oop Wine CI/CD Pipeline
 
 
 # ==========================================================
@@ -87,7 +87,7 @@ env:
   IMAGE_TAG: ${{ github.sha }}
 
   # Helm release
-  HELM_RELEASE: Oop-wine-app
+  HELM_RELEASE: oop-wine-app
 
   # Helm chart
   HELM_CHART: ./helm/wine
@@ -177,6 +177,20 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
+      # --------------------------------------------------------
+      # --------------------------------------------------------
+      - name: DEBUG - Check Secret Visibility
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+        run: |
+          echo "======================================"
+          echo "DEBUG: Secret Check"
+          echo "======================================"
+          if [ -z "$DOCKERHUB_USERNAME" ]; then
+            echo "DOCKERHUB_USERNAME is EMPTY or NOT SET"
+          else
+            echo "DOCKERHUB_USERNAME is SET (length: ${#DOCKERHUB_USERNAME} characters)"
+          fi
 
       # ------------------------------------------------------
       # STEP 13: Verify Docker
