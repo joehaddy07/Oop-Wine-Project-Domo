@@ -348,32 +348,29 @@ jobs:
 
           helm lint ${{ env.HELM_CHART }}
 
-
       # ------------------------------------------------------
       # STEP 22: Deploy with Helm
       # ------------------------------------------------------
-
       - name: Deploy Application with Helm
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
         run: |
-
           echo "======================================"
           echo "Deploying Application"
           echo "======================================"
 
-          IMAGE="${DOCKERHUB_USERNAME}/${{ env.IMAGE_NAME }}"
+          CLEAN_USER=$(echo "${DOCKERHUB_USERNAME}" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9_-')
 
-          echo "Repository:"
-          echo "$IMAGE"
-
-          echo "Tag:"
-          echo "${{ env.IMAGE_TAG }}"
+          if [ -n "$CLEAN_USER" ]; then
+            REPO_PATH="${CLEAN_USER}/${{ env.IMAGE_NAME }}"
+          else
+            REPO_PATH="${{ env.IMAGE_NAME }}"
+          fi
 
           helm upgrade --install \
             ${{ env.HELM_RELEASE }} \
             ${{ env.HELM_CHART }} \
-            --set image.repository="$IMAGE" \
+            --set image.repository="$REPO_PATH" \
             --set image.tag="${{ env.IMAGE_TAG }}" \
             --set image.pullPolicy=IfNotPresent \
             --set replicaCount=3 \
