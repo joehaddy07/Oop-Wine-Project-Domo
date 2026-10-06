@@ -4,58 +4,58 @@
 # Pipeline Flow
 #
 # Developer Push
-#       │
-#       ▼
+#        │
+#        ▼
 # Checkout Source Code
-#       │
-#       ▼
+#        │
+#        ▼
 # Install Python
-#       │
-#       ▼
+#        │
+#        ▼
 # Install Dependencies
-#       │
-#       ▼
+#        │
+#        ▼
 # Run Unit Tests
-#       │
-#       ▼
+#        │
+#        ▼
 # Train Machine Learning Model
-#       │
-#       ▼
+#        │
+#        ▼
 # Log Experiment + Register Model with MLflow
-#       │
-#       ▼
+#        │
+#        ▼
 # Login to Docker Hub
-#       │
-#       ▼
+#        │
+#        ▼
 # Build Docker Image with Git SHA
-#       │
-#       ▼
+#        │
+#        ▼
 # Scan Image with Trivy
-#       │
-#       ▼
+#        │
+#        ▼
 # Push Docker Image to Docker Hub
-#       │
-#       ▼
+#        │
+#        ▼
 # Verify joe-cluster
-#       │
-#       ▼
+#        │
+#        ▼
 # Configure kubectl
-#       │
-#       ▼
+#        │
+#        ▼
 # Load Exact Image into Kind
-#       │
-#       ▼
+#        │
+#        ▼
 # Deploy with Helm
-#       │
-#       ▼
+#        │
+#        ▼
 # Verify Deployed Image
-#       │
-#       ▼
+#        │
+#        ▼
 # Wait for Rolling Deployment
-#       │
-#       ├── SUCCESS → Verify Kubernetes
-#       │
-#       └── FAILURE → Collect Kubernetes Diagnostics
+#        │
+#        ├── SUCCESS → Verify Kubernetes
+#        │
+#        └── FAILURE → Collect Kubernetes Diagnostics
 # ==========================================================
 
 name: Oop Wine CI/CD Pipeline
@@ -275,14 +275,18 @@ jobs:
 
       - name: Load Image into joe-cluster
         env:
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DUSER: ${{ secrets.DOCKERHUB_USERNAME }}
         run: |
 
           echo "======================================"
           echo "Loading Exact Image into Kind"
           echo "======================================"
 
-          IMAGE="${DOCKERHUB_USERNAME}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
+          if [ -n "$DUSER" ]; then
+            IMAGE="${DUSER}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
+          else
+            IMAGE="${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
+          fi
 
           echo "Image:"
           echo "$IMAGE"
@@ -298,14 +302,18 @@ jobs:
 
       - name: Verify Image in Kind
         env:
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DUSER: ${{ secrets.DOCKERHUB_USERNAME }}
         run: |
 
           echo "======================================"
           echo "Verifying Image Inside Kind"
           echo "======================================"
 
-          IMAGE="${DOCKERHUB_USERNAME}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
+          if [ -n "$DUSER" ]; then
+            IMAGE="${DUSER}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
+          else
+            IMAGE="${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
+          fi
 
           docker exec \
             ${{ env.KIND_CLUSTER }}-control-plane \
@@ -350,17 +358,21 @@ jobs:
 
       - name: Deploy Application with Helm
         env:
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DUSER: ${{ secrets.DOCKERHUB_USERNAME }}
         run: |
 
           echo "======================================"
           echo "Deploying Application"
           echo "======================================"
 
-          IMAGE="${DOCKERHUB_USERNAME}/${{ env.IMAGE_NAME }}"
+          if [ -n "$DUSER" ]; then
+            REPO_PATH="${DUSER}/${{ env.IMAGE_NAME }}"
+          else
+            REPO_PATH="${{ env.IMAGE_NAME }}"
+          fi
 
           echo "Repository:"
-          echo "$IMAGE"
+          echo "$REPO_PATH"
 
           echo "Tag:"
           echo "${{ env.IMAGE_TAG }}"
@@ -368,7 +380,7 @@ jobs:
           helm upgrade --install \
             ${{ env.HELM_RELEASE }} \
             ${{ env.HELM_CHART }} \
-            --set image.repository="$IMAGE" \
+            --set image.repository="$REPO_PATH" \
             --set image.tag="${{ env.IMAGE_TAG }}" \
             --set image.pullPolicy=IfNotPresent \
             --set replicaCount=3 \
@@ -381,7 +393,7 @@ jobs:
 
       - name: Verify Deployed Image
         env:
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DUSER: ${{ secrets.DOCKERHUB_USERNAME }}
         run: |
 
           echo "======================================"
@@ -391,7 +403,11 @@ jobs:
           DEPLOYED_IMAGE=$(kubectl get deployment ${{ env.HELM_RELEASE }} \
             -o jsonpath='{.spec.template.spec.containers[0].image}')
 
-          EXPECTED_IMAGE="${DOCKERHUB_USERNAME}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
+          if [ -n "$DUSER" ]; then
+            EXPECTED_IMAGE="${DUSER}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
+          else
+            EXPECTED_IMAGE="${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
+          fi
 
           echo "Expected:"
           echo "$EXPECTED_IMAGE"
@@ -697,15 +713,21 @@ jobs:
       - name: Pipeline Completed Successfully
         if: success()
         env:
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DUSER: ${{ secrets.DOCKERHUB_USERNAME }}
         run: |
 
           echo "======================================"
           echo "MLOps Pipeline Completed Successfully"
           echo "======================================"
 
+          if [ -n "$DUSER" ]; then
+            IMAGE="${DUSER}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
+          else
+            IMAGE="${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
+          fi
+
           echo "Docker Image:"
-          echo "${DOCKERHUB_USERNAME}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
+          echo "$IMAGE"
 
           echo ""
 
