@@ -268,18 +268,33 @@ jobs:
 
           kubectl cluster-info
 
-
+# ------------------------------------------------------
+      # STEP 18: Build & Load Image into Kind Cluster
       # ------------------------------------------------------
-      # STEP 18: Load Exact Git SHA Image into Kind
-      # ------------------------------------------------------
-
       - name: Load Image into joe-cluster
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
         run: |
-          IMAGE="${DOCKERHUB_USERNAME}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
+          echo "======================================"
+          echo "Loading Exact Image into Kind"
+          echo "======================================"
+
+          # Force username to lowercase and remove non-alphanumeric characters
+          CLEAN_USER=$(echo "${DOCKERHUB_USERNAME}" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9_-')
+
+          if [ -n "$CLEAN_USER" ]; then
+            IMAGE="${CLEAN_USER}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
+          else
+            IMAGE="${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
+          fi
+
           echo "Building: $IMAGE"
           docker build -t "$IMAGE" -f app/Dockerfile .
+
+          echo "Loading into Kind..."
+          kind load docker-image \
+            --name ${{ env.KIND_CLUSTER }} \
+            "$IMAGE"
 
 
       # ------------------------------------------------------
