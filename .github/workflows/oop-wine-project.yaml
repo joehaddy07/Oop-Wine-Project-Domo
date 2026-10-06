@@ -269,31 +269,35 @@ jobs:
           kubectl cluster-info
 
 
+  # ------------------------------------------------------
+      # STEP 18: Build & Load Image into Kind Cluster
       # ------------------------------------------------------
-      # STEP 18: Load Exact Git SHA Image into Kind
-      # ------------------------------------------------------
-
       - name: Load Image into joe-cluster
         env:
-          DUSER: ${{ secrets.DOCKERHUB_USERNAME }}
+          RAW_DUSER: ${{ secrets.DOCKERHUB_USERNAME }}
         run: |
-
           echo "======================================"
           echo "Loading Exact Image into Kind"
           echo "======================================"
 
-          if [ -n "$DUSER" ]; then
-            IMAGE="${DUSER}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
+          # Sanitize username: strip leading/trailing slashes, asterisks, or whitespace
+          CLEAN_USER=$(echo "$RAW_DUSER" | tr -d '[:space:]*')
+
+          if [ -n "$CLEAN_USER" ]; then
+            IMAGE="${CLEAN_USER}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
           else
             IMAGE="${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
           fi
 
-          echo "Image:"
-          echo "$IMAGE"
+          echo "Target Image: $IMAGE"
 
-          kind load docker-image \
-            --name ${{ env.KIND_CLUSTER }} \
-            "$IMAGE"
+          # 1. Build image locally in Job 2's Docker context
+          echo "Building local image for Kind..."
+          docker build -t "$IMAGE" .
+
+          # 2. Load built image into Kind cluster
+          echo "Loading into Kind..."
+          kind load docker-image --name ${{ env.KIND_CLUSTER }} "$IMAGE"
 
 
       # ------------------------------------------------------
@@ -355,27 +359,24 @@ jobs:
       # ------------------------------------------------------
       # STEP 22: Deploy with Helm
       # ------------------------------------------------------
-
       - name: Deploy Application with Helm
         env:
-          DUSER: ${{ secrets.DOCKERHUB_USERNAME }}
+          RAW_DUSER: ${{ secrets.DOCKERHUB_USERNAME }}
         run: |
-
           echo "======================================"
           echo "Deploying Application"
           echo "======================================"
 
-          if [ -n "$DUSER" ]; then
-            REPO_PATH="${DUSER}/${{ env.IMAGE_NAME }}"
+          CLEAN_USER=$(echo "$RAW_DUSER" | tr -d '[:space:]*')
+
+          if [ -n "$CLEAN_USER" ]; then
+            REPO_PATH="${CLEAN_USER}/${{ env.IMAGE_NAME }}"
           else
             REPO_PATH="${{ env.IMAGE_NAME }}"
           fi
 
-          echo "Repository:"
-          echo "$REPO_PATH"
-
-          echo "Tag:"
-          echo "${{ env.IMAGE_TAG }}"
+          echo "Repository: $REPO_PATH"
+          echo "Tag: ${{ env.IMAGE_TAG }}"
 
           helm upgrade --install \
             ${{ env.HELM_RELEASE }} \
