@@ -83,4 +83,4 @@ oop-wine-quality/
 │
 └── .gitignore
 
-Project structure.
+Project structure..
