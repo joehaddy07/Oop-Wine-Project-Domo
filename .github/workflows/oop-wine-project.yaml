@@ -158,6 +158,92 @@ jobs:
               -r requirements.txt
           fi
 
+
+      # ------------------------------------------------------
+      # STEP 4: Run Unit Tests
+      # ------------------------------------------------------
+
+      - name: Run Unit Tests
+        run: |
+          python -m pytest
+
+
+      # ------------------------------------------------------
+      # STEP 5: Train Model + Log/Register with MLflow
+      # ------------------------------------------------------
+
+      - name: Train Machine Learning Model
+        run: |
+          python src/main.py
+
+
+      # ------------------------------------------------------
+      # STEP 6: Copy Trained Model into the App Folder
+      #
+      # app/apps.py loads the model from its own directory as
+      # "wine_quality_model.pkl". Training outputs a
+      # differently-named file to a different folder, so we
+      # bridge the two here, right before the Docker build.
+      # ------------------------------------------------------
+
+      - name: Copy Model for Docker Build
+        run: |
+          cp artifacts/models/wine_quality.pkl app/wine_quality_model.pkl
+
+
+      # ------------------------------------------------------
+      # STEP 7: Login to Docker Hub
+      # ------------------------------------------------------
+
+      - name: Login to Docker Hub
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
+
+
+      # ------------------------------------------------------
+      # STEP 8: Build Docker Image with Git SHA
+      #
+      # -f points at the Dockerfile; the trailing "." sets the
+      # build context to the REPO ROOT, which is what the
+      # Dockerfile's "COPY app/..." lines expect.
+      # ------------------------------------------------------
+
+      - name: Build Docker Image
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+        run: |
+          IMAGE="${DOCKERHUB_USERNAME}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
+          echo "Building: $IMAGE"
+          docker build -t "$IMAGE" -f app/Dockerfile .
+
+
+      # ------------------------------------------------------
+      # STEP 9: Scan Image with Trivy
+      # ------------------------------------------------------
+
+      - name: Scan Image with Trivy
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+        run: |
+          IMAGE="${DOCKERHUB_USERNAME}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
+          trivy image --exit-code 0 --severity HIGH,CRITICAL "$IMAGE"
+
+
+      # ------------------------------------------------------
+      # STEP 10: Push Docker Image to Docker Hub
+      # ------------------------------------------------------
+
+      - name: Push Docker Image
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+        run: |
+          IMAGE="${DOCKERHUB_USERNAME}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
+          docker push "$IMAGE"
+
+
   # ========================================================
   # JOB 2
   # Kubernetes + Helm Deployment
